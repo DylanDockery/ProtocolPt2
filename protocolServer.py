@@ -1,6 +1,6 @@
 #Dylan Dockery
 #Server to process custom protocol and print out payload as buffer. Checks for data integrity and rerequests packet if corrupt
-#libraries needed : socket, argparse, random
+#libraries needed : socket, argparse, random, sys
 #instructions: 
 #Start via commandline. Commandline parameters are as follows:
 #-p --- Port used for server. Required 
@@ -50,6 +50,7 @@ def integrityCheck(message):
 def decode(message):
     return message[10:message[1]].decode('utf-8')
 
+#processes message to check for integrity and respond accordingly
 def process(message):
     if integrityCheck(message):
         flag=NACK
@@ -58,6 +59,7 @@ def process(message):
         data=decode(message)
         print(data, end="")
         stdout.flush()
+    #emulate s lost NACK and ACK packets
     drop_flag=random.randrange(0, 10, 1)
     if drop_flag != 1:
         response = encode(clientAddress[1],'', flag,message[seq_IND])
@@ -79,25 +81,30 @@ serverSocket.bind(('',port))
 print("The server is ready to receive")
 
 #data store
-data=""
+client_port="-1"
+prev_seq=0
 prev_flag=NACK
 
 while True:
     try:
         message, clientAddress = serverSocket.recvfrom(2048)
+        #reinitializes seq number on a new connection
+        if clientAddress[1]!=client_port:
+            client_port=clientAddress[1]
+            prev_seq=0
+        #emulates lost packets with SND flag from client to server
         drop_flag=random.randrange(0, 10, 1)
         if message[protocol_IND]==0 and drop_flag!=1:
-            prev_data=data
             data=decode(message)
-            duplicate= (prev_data==data)
-
+            #check for duplicate messages and processing
+            duplicate= (prev_seq==message[seq_IND])
             if duplicate and prev_flag == ACK:
                 response = encode(clientAddress[1],'', ACK ,message[seq_IND])
                 serverSocket.sendto(response,clientAddress)
             else:
-                flag = process(message)
+                prev_flag = process(message)
             
-            prev_flag=flag
+            prev_seq=message[seq_IND]
 
     except KeyboardInterrupt:
         break
